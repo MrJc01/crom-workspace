@@ -1,39 +1,58 @@
-# 🛡️ Política de Acesso — VPS de Membros CROM
+# 🛡️ Política de Acesso — Ecossistema Multi-VPS CROM
 
-**Data**: 2026-05-01
-**Versão**: 1.0
+**Atualizado em**: 2026-05-06
+**Versão**: 2.0
 
 ---
 
 ## 1. Elegibilidade
 
 - Membros ativos da comunidade CROM
-- Aprovação pelo administrador
-- Aceitar os termos de uso
+- Aprovação e classificação pelo administrador (MRJ)
+- Aceitar os termos de uso e esta política
 
-## 2. Tipos de Acesso
+## 2. Classificação de Membros
+
+Ao ingressar, cada membro é classificado em uma de duas categorias:
+
+| Categoria | VPS | Descrição |
+|-----------|-----|-----------|
+| **Pilar** | `vps1.crom.me` | Membros com papel estrutural no coletivo |
+| **Forja** | `vps2.crom.me` | Membros em fase de desenvolvimento e aprendizado |
+
+> A VPS Guardiões (`crom.me`) hospeda os serviços core do ecossistema (CromIA, landing page, etc).
+
+## 3. Tipos de Acesso
 
 | Nível | Shell | Descrição |
 |-------|-------|-----------|
-| **Membro** | `/bin/bash` | Acesso SSH completo à área pessoal |
+| **Membro Ativo** | `/bin/bash` | Acesso SSH completo à área pessoal |
 | **Restrito** | `/usr/sbin/nologin` | Sem acesso SSH (apenas serviços) |
-| **Banido** | Conta bloqueada | Acesso revogado |
+| **Banido** | Conta bloqueada | Acesso revogado temporária ou permanentemente |
 
-## 3. Recursos por Membro
+## 4. Recursos por Membro
 
-- **Diretório home** pessoal em `/home/username/`
-- **Permissões** restritas ao próprio diretório
-- **Sem acesso root** — operações privilegiadas via admin apenas
+- **Diretório home** pessoal e isolado em `/home/username/`
+- **Ferramenta `crom-ws`** para gerenciar projetos, publicar na web e ver portas
+- **Podman** (Docker rootless) para containers sem precisar de root
+- **Crontab** pessoal para agendar tarefas
+- **Git** disponível para versionamento
+- **Sem acesso root** — operações privilegiadas somente via admin (MRJ)
 
-## 4. Proibições
+## 5. Proibições
 
 - Mineração de criptomoedas
 - Hospedagem de conteúdo ilegal
 - Port scanning ou ataques a terceiros
 - Tentativa de escalar privilégios
 - Uso excessivo de recursos (CPU/RAM/Disco) sem autorização
+- Acessar diretórios de outros membros
 
-## 5. Penalidades
+## 6. Comunicação e Portas
+
+Antes de subir um serviço em uma porta, o membro **deve comunicar** aos demais membros da mesma VPS para evitar conflitos. Use o comando `crom-ws ports` para verificar o que já está em uso.
+
+## 7. Penalidades
 
 | Infração | Ação |
 |----------|------|
@@ -41,12 +60,27 @@
 | 2ª Ocorrência leve | Suspensão temporária (ban reversível) |
 | Ocorrência grave | Ban permanente + deleção da conta |
 
-## 6. Monitoramento
+## 8. Monitoramento e Privacidade
 
-- Acessos SSH são logados e auditáveis
-- Relatórios periódicos são gerados via `crom-manager.sh`
-- O administrador pode verificar sessões ativas a qualquer momento
+A filosofia do CROM é **Liberdade com Responsabilidade**:
 
-## 7. Alterações
+- ✅ Acessos SSH são logados automaticamente (horário, IP, duração)
+- ✅ Comandos executados no terminal são registrados para auditoria
+- ✅ Relatórios periódicos são gerados via `monitor.sh` (orquestrador)
+- ✅ O administrador pode verificar sessões ativas a qualquer momento
 
-Esta política pode ser atualizada a qualquer momento. Membros serão notificados de mudanças significativas.
+**O que NÃO fazemos:**
+
+- ❌ Não lemos seus arquivos pessoais sem motivo
+- ❌ Não monitoramos ativamente o que você faz em tempo real
+- ❌ Não acessamos logs sem necessidade de auditoria
+
+> Os logs existem para **proteção de todos** — só serão consultados em caso de incidente de segurança, denúncia ou comportamento suspeito no sistema.
+
+## 9. Solicitação de Conta
+
+Para obter acesso, entre em contato com o administrador **MRJ** pelo Discord do Coletivo CROM. Ele realizará a avaliação, classificará o membro (Pilar ou Forja) e criará a conta na VPS apropriada.
+
+## 10. Alterações
+
+Esta política pode ser atualizada a qualquer momento. Membros serão notificados de mudanças significativas pelo Discord.

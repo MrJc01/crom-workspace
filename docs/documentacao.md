@@ -7,7 +7,17 @@
 
 ## O que é
 
-O `crom-ws` é uma CLI (Command Line Interface) instalada no servidor de membros CROM (`crom.me`). Ele permite que cada membro crie, organize e gerencie projetos pessoais dentro do seu espaço no servidor.
+O `crom-ws` é uma CLI (Command Line Interface) instalada em todas as VPS do ecossistema CROM. Ele permite que cada membro crie, organize e gerencie projetos pessoais dentro do seu espaço no servidor.
+
+**Infraestrutura disponível:**
+
+| VPS | Domínio | Propósito |
+|-----|---------|-----------|
+| Guardiões | `crom.me` | VPS principal — serviços core |
+| Pilares | `vps1.crom.me` | VPS de membros Pilar |
+| Forja | `vps2.crom.me` | VPS de membros Forja |
+
+> ℹ️ O `crom-ws` funciona de forma idêntica em todas as VPS. Ao conectar via SSH, o membro já terá acesso ao `crom-ws` na VPS onde sua conta foi criada.
 
 **Características:**
 - Cada membro tem seu próprio workspace isolado
@@ -157,8 +167,13 @@ crom-ws publish api-crom 8080
 ```
   ℹ  Solicitando publicação para api-crom na porta 8080...
   ✓  Projeto publicado com sucesso!
-  ✓  URL: http://api-crom-pedrodev.crom.me
+  ✓  URL: http://api-crom-pedrodev.vps1.crom.me
 ```
+
+> ℹ️ **O subdomínio gerado depende da VPS onde você está:**
+> - Na VPS Guardiões: `api-crom-pedrodev.crom.me`
+> - Na VPS Pilares: `api-crom-pedrodev.vps1.crom.me`
+> - Na VPS Forja: `api-crom-pedrodev.vps2.crom.me`
 
 > ⚠️ **Nota:** Você precisa estar rodando o seu app na porta `8080` (seja via npm, go, python, ou podman) para o site abrir.
 
@@ -185,7 +200,7 @@ crom-ws ports
   🌐 PROJETOS PUBLICADOS (ECOSSISTEMA)
 
   PORTA    USUÁRIO         PROJETO         URL (DOMÍNIO)                      
-  8080     pedrodev        api-crom        api-crom-pedrodev.crom.me             
+  8080     pedrodev        api-crom        api-crom-pedrodev.vps1.crom.me             
 ```
 
 ---
@@ -336,16 +351,19 @@ O admin pode consultar esses arquivos remotamente para saber o que cada membro e
 Usamos **Podman**, que é idêntico ao Docker mas 100% seguro (rootless). Você pode usar os comandos `podman run` ou usar o alias `docker run` que funciona da mesma forma. Exemplo: `docker run -d -p 3000:80 nginx`.
 
 ### Posso instalar pacotes no servidor?
-Não. Apenas o admin (root) pode instalar pacotes via `apt`. Peça no Discord ou por mensagem.
+Não. Apenas o admin (root) pode instalar pacotes via `apt`. Entre em contato com **MRJ** pelo Discord ou por mensagem direta.
 
 ### Posso rodar servidores web?
 Sim! Rode localmente na sua porta (ex: 8080) e use o comando `crom-ws publish meu-projeto 8080` para o servidor gerar o subdomínio e expor para a internet. Não tente acessar portas abaixo de 1024.
 
 ### Meus arquivos são privados?
-Sim, outros membros não acessam seu diretório. O admin (root) tem acesso para auditoria.
+Sim, outros membros não acessam seu diretório. O admin (root) tem acesso para auditoria, mas não monitora ativamente — veja [Política de Acesso](politica-acesso.md) para detalhes.
 
 ### Posso usar git?
 Sim! Git está disponível. Clone repositórios dentro de `~/projetos/`.
 
 ### Quanto espaço tenho?
 O disco é compartilhado. Use com responsabilidade. Verifique com `crom-ws status`.
+
+### Em qual VPS estou?
+Você foi alocado em uma VPS ao receber sua conta. Ao conectar via SSH, o endereço que você usa indica a VPS (ex: `vps1.crom.me` = Pilares, `vps2.crom.me` = Forja). Se precisar acesso em outra VPS, fale com **MRJ**.
