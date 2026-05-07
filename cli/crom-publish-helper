@@ -97,13 +97,30 @@ EOF
     }
     
     systemctl reload nginx >/dev/null 2>&1
-    echo "SUCESSO:${URL}"
+    
+    # Try to issue SSL certificate silently
+    SSL_STATUS="(HTTP apenas - SSL falhou ou DNS pendente)"
+    if command -v certbot >/dev/null 2>&1; then
+        if certbot --nginx -d "${URL}" --non-interactive --register-unsafely-without-email --agree-tos --redirect >/dev/null 2>&1; then
+            SSL_STATUS="(HTTPS ativado)"
+        fi
+    fi
+    
+    echo "SUCESSO:${URL} ${SSL_STATUS}"
     exit 0
 
 elif [[ "$ACTION" == "rm" ]]; then
     if [[ -f "$CONF_FILE" ]]; then
+        # Extrair URL antes de apagar
+        URL_TO_DEL=$(grep "server_name" "$CONF_FILE" | awk '{print $2}' | tr -d ';' || echo "")
         rm -f "$CONF_FILE" "$LINK_FILE"
         systemctl reload nginx >/dev/null 2>&1
+        
+        # Tentar limpar o certificado SSL
+        if [[ -n "$URL_TO_DEL" ]] && command -v certbot >/dev/null 2>&1; then
+            certbot delete --cert-name "$URL_TO_DEL" --non-interactive >/dev/null 2>&1 || true
+        fi
+        
         echo "SUCESSO"
     else
         echo "ERRO: Projeto não estava publicado."
