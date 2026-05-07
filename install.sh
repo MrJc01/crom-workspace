@@ -27,6 +27,16 @@ echo "[2/5] Instalando crom-ws em /usr/local/bin..."
 cp crom-ws /usr/local/bin/crom-ws
 chmod 755 /usr/local/bin/crom-ws
 
+echo "[2.5/5] Instalando crom-publish-helper em /usr/local/sbin..."
+cp crom-publish-helper /usr/local/sbin/crom-publish-helper
+chmod 700 /usr/local/sbin/crom-publish-helper
+
+echo "[2.6/5] Configurando sudoers para o helper..."
+cat > /etc/sudoers.d/crom-ws <<'EOF'
+%crom-membros ALL=(ALL) NOPASSWD: /usr/local/sbin/crom-publish-helper *
+EOF
+chmod 440 /etc/sudoers.d/crom-ws
+
 # 3. Instalar crom-monitor
 echo "[3/5] Instalando crom-monitor em /usr/local/bin..."
 cp crom-monitor.sh /usr/local/bin/crom-monitor
