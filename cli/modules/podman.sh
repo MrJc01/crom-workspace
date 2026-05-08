@@ -19,10 +19,44 @@ cmd_podman() {
 }
 
 cmd_podman_run() {
-    local name="${1:-}"
-    local image="${2:-}"
-    local port="${3:-}"
+    local name=""
+    local image=""
+    local port=""
+    local envs=()
+    local volumes=()
+    local extra_args=()
+    local port_maps=()
+    local container_name=""
 
+    # Parser de flags no estilo Docker
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -e|--env)
+                envs+=("$2"); shift 2 ;;
+            -v|--volume)
+                volumes+=("$2"); shift 2 ;;
+            -p|--publish)
+                port_maps+=("$2"); shift 2 ;;
+            --name)
+                container_name="$2"; shift 2 ;;
+            --args)
+                extra_args+=("$2"); shift 2 ;;
+            -*)
+                err "Flag desconhecida: $1"; cmd_podman_help; return 1 ;;
+            *)
+                # Argumentos posicionais: nome imagem [porta]
+                if [[ -z "$name" ]]; then
+                    name="$1"
+                elif [[ -z "$image" ]]; then
+                    image="$1"
+                elif [[ -z "$port" ]]; then
+                    port="$1"
+                fi
+                shift ;;
+        esac
+    done
+
+    # Validações (interativo se necessário)
     [[ -z "$name" ]] && { read -rp "  Nome do serviço: " name; }
     [[ -z "$name" ]] && { err "Nome obrigatório"; return 1; }
     name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')
@@ -30,16 +64,15 @@ cmd_podman_run() {
     [[ -z "$image" ]] && { read -rp "  Imagem (ex: redis:alpine, n8nio/n8n): " image; }
     [[ -z "$image" ]] && { err "Imagem obrigatória"; return 1; }
 
-    [[ -z "$port" ]] && { read -rp "  Porta exposta (ex: 5678, 6379): " port; }
-    [[ -z "$port" ]] && { err "Porta obrigatória"; return 1; }
-    [[ ! "$port" =~ ^[0-9]+$ ]] && { err "Porta inválida"; return 1; }
+    # Porta é opcional se -p foi usado
+    if [[ -z "$port" ]] && [[ ${#port_maps[@]} -eq 0 ]]; then
+        read -rp "  Porta exposta (ex: 5678, ou enter para nenhuma): " port
+    fi
 
     # Garantir diretório de Quadlets
     mkdir -p "$QUADLET_DIR"
 
     local quadlet_file="${QUADLET_DIR}/${name}.container"
-    local volume_dir="${HOME}/.local/share/crom-volumes/${name}"
-    mkdir -p "$volume_dir"
 
     if [[ -f "$quadlet_file" ]]; then
         warn "Quadlet '${name}' já existe. Use 'crom-ws podman rm ${name}' primeiro."
@@ -48,20 +81,60 @@ cmd_podman_run() {
 
     info "Gerando Quadlet para '${name}'..."
 
+    # Construir seção [Container]
+    local container_section=""
+    container_section+="Image=${image}\n"
+
+    # Container name
+    if [[ -n "$container_name" ]]; then
+        container_section+="ContainerName=${container_name}\n"
+    fi
+
+    # Portas: -p tem prioridade, senão usa porta posicional
+    if [[ ${#port_maps[@]} -gt 0 ]]; then
+        for pm in "${port_maps[@]}"; do
+            container_section+="PublishPort=${pm}\n"
+        done
+    elif [[ -n "$port" ]]; then
+        container_section+="PublishPort=${port}:${port}\n"
+    fi
+
+    # Volumes: -v tem prioridade, senão cria volume padrão
+    if [[ ${#volumes[@]} -gt 0 ]]; then
+        for vol in "${volumes[@]}"; do
+            # Expandir ~ para $HOME
+            vol="${vol/#\~/$HOME}"
+            container_section+="Volume=${vol}\n"
+        done
+    else
+        local volume_dir="${HOME}/.local/share/crom-volumes/${name}"
+        mkdir -p "$volume_dir"
+        container_section+="Volume=${volume_dir}:/data:Z\n"
+    fi
+
+    # Variáveis de ambiente
+    for env in "${envs[@]}"; do
+        container_section+="Environment=${env}\n"
+    done
+
+    # Args extras do Podman
+    for arg in "${extra_args[@]}"; do
+        container_section+="PodmanArgs=${arg}\n"
+    done
+
+    container_section+="AutoUpdate=registry\n"
+    container_section+="Label=crom.project=${name}\n"
+    container_section+="Label=crom.owner=${USER_NAME}\n"
+    [[ -n "$port" ]] && container_section+="Label=crom.port=${port}\n"
+
+    # Escrever o Quadlet
     cat > "$quadlet_file" <<EOF
 [Unit]
 Description=CROM Container: ${name}
 After=default.target
 
 [Container]
-Image=${image}
-PublishPort=${port}:${port}
-Volume=${volume_dir}:/data:Z
-AutoUpdate=registry
-Label=crom.project=${name}
-Label=crom.owner=${USER_NAME}
-Label=crom.port=${port}
-
+$(echo -e "$container_section")
 [Service]
 Restart=always
 RestartSec=10
@@ -82,17 +155,20 @@ EOF
     if systemctl --user is-active --quiet "${name}.service" 2>/dev/null; then
         success "Container '${name}' está rodando!"
         success "Imagem: ${image}"
-        success "Porta: ${port}"
-        success "Volume: ${volume_dir}"
+        [[ -n "$port" ]] && success "Porta: ${port}"
+        [[ ${#envs[@]} -gt 0 ]] && success "Env vars: ${#envs[@]} configuradas"
+        [[ ${#volumes[@]} -gt 0 ]] && success "Volumes: ${#volumes[@]} montados"
         success "Auto-restart: ATIVO (sobrevive reboot)"
-        echo -e "\n  ${C_D}Dica: Para publicar na web, rode:${NC}"
-        echo -e "  ${C_C}crom-ws publish ${name} ${port}${NC}\n"
+        if [[ -n "$port" ]]; then
+            echo -e "\n  ${C_D}Dica: Para publicar na web, rode:${NC}"
+            echo -e "  ${C_C}crom-ws publish ${name} ${port}${NC}\n"
+        fi
     else
         warn "Serviço criado, mas pode estar ainda baixando a imagem..."
         warn "Verifique com: crom-ws podman logs ${name}"
     fi
 
-    log_action "PODMAN_RUN" "name=${name} image=${image} port=${port}"
+    log_action "PODMAN_RUN" "name=${name} image=${image} port=${port} envs=${#envs[@]} vols=${#volumes[@]}"
 }
 
 cmd_podman_stop() {
@@ -169,7 +245,7 @@ cmd_podman_list() {
     for qf in "$QUADLET_DIR"/*.container; do
         local sname=$(basename "$qf" .container)
         local img=$(grep '^Image=' "$qf" | cut -d= -f2)
-        local port=$(grep '^PublishPort=' "$qf" | cut -d= -f2 | cut -d: -f1)
+        local port=$(grep '^PublishPort=' "$qf" | head -1 | cut -d= -f2 | cut -d: -f1)
         local st
         if systemctl --user is-active --quiet "${sname}.service" 2>/dev/null; then
             st="${C_G}● ATIVO${NC}"
@@ -201,12 +277,32 @@ cmd_podman_logs() {
 
 cmd_podman_help() {
     echo -e "\n  ${C_P}${C_B}🐳 CROM Podman — Containers com Auto-Restart${NC}\n"
-    echo -e "  ${C_C}crom-ws podman run${NC} <nome> <imagem> <porta>   Criar e iniciar container"
-    echo -e "  ${C_C}crom-ws podman stop${NC} <nome>                   Parar container"
-    echo -e "  ${C_C}crom-ws podman start${NC} <nome>                  Reiniciar container"
-    echo -e "  ${C_C}crom-ws podman rm${NC} <nome>                     Remover container"
-    echo -e "  ${C_C}crom-ws podman list${NC}                          Listar containers"
-    echo -e "  ${C_C}crom-ws podman logs${NC} <nome>                   Ver logs\n"
+    echo -e "  ${C_B}Uso básico:${NC}"
+    echo -e "  ${C_C}crom-ws podman run${NC} <nome> <imagem> [porta]         Criar container simples\n"
+    echo -e "  ${C_B}Uso avançado (flags no estilo Docker):${NC}"
+    echo -e "  ${C_C}-e${NC} KEY=VALUE          Variável de ambiente (pode repetir)"
+    echo -e "  ${C_C}-v${NC} /host:/container   Volume customizado (pode repetir)"
+    echo -e "  ${C_C}-p${NC} HOST:CONTAINER     Mapeamento de porta (pode repetir)"
+    echo -e "  ${C_C}--name${NC} NOME           Nome do container interno"
+    echo -e "  ${C_C}--args${NC} \"FLAGS\"         Args extras do Podman (ex: --pod=meu-pod)\n"
+    echo -e "  ${C_B}Exemplos:${NC}"
+    echo -e "  ${C_D}# Simples — Redis na porta 6379${NC}"
+    echo -e "  ${C_C}crom-ws podman run${NC} meu-redis redis:alpine 6379\n"
+    echo -e "  ${C_D}# Avançado — n8n com env vars e volume custom${NC}"
+    echo -e "  ${C_C}crom-ws podman run${NC} n8n n8nio/n8n 5678 \\"
+    echo -e "    -e WEBHOOK_URL=https://n8n.vps1.crom.me/ \\"
+    echo -e "    -e N8N_SECURE_COOKIE=true \\"
+    echo -e "    -v ~/n8n/data:/home/node/.n8n:Z\n"
+    echo -e "  ${C_D}# Com pod e porta customizada${NC}"
+    echo -e "  ${C_C}crom-ws podman run${NC} meu-app minha-imagem \\"
+    echo -e "    -p 8080:80 --args \"--pod=meu-pod\"\n"
+    echo -e "  ${C_B}Gerenciamento:${NC}"
+    echo -e "  ${C_C}crom-ws podman stop${NC} <nome>       Parar container"
+    echo -e "  ${C_C}crom-ws podman start${NC} <nome>      Reiniciar container"
+    echo -e "  ${C_C}crom-ws podman rm${NC} <nome>         Remover container"
+    echo -e "  ${C_C}crom-ws podman list${NC}              Listar containers"
+    echo -e "  ${C_C}crom-ws podman logs${NC} <nome>       Ver logs\n"
     echo -e "  ${C_D}Containers criados aqui reiniciam automaticamente no boot da VPS.${NC}"
     echo -e "  ${C_D}Para expor na web: crom-ws publish <nome> <porta>${NC}\n"
 }
+
