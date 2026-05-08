@@ -1,7 +1,7 @@
 # 🛡️ Política de Acesso — Ecossistema Multi-VPS CROM
 
-**Atualizado em**: 2026-05-06
-**Versão**: 2.0
+**Atualizado em**: 2026-05-08
+**Versão**: 3.0
 
 ---
 
@@ -33,8 +33,10 @@ Ao ingressar, cada membro é classificado em uma de duas categorias:
 ## 4. Recursos por Membro
 
 - **Diretório home** pessoal e isolado em `/home/username/`
-- **Ferramenta `crom-ws`** para gerenciar projetos, publicar na web e ver portas
+- **Ferramenta `crom-ws`** para gerenciar projetos, publicar na web e rodar containers
 - **Podman** (Docker rootless) para containers sem precisar de root
+- **Auto-restart de containers** via Quadlets do Systemd (sobrevive reboots)
+- **Publicação web** com subdomínio e HTTPS automático (Let's Encrypt)
 - **Crontab** pessoal para agendar tarefas
 - **Git** disponível para versionamento
 - **Sem acesso root** — operações privilegiadas somente via admin (MRJ)
@@ -66,7 +68,7 @@ A filosofia do CROM é **Liberdade com Responsabilidade**:
 
 - ✅ Acessos SSH são logados automaticamente (horário, IP, duração)
 - ✅ Comandos executados no terminal são registrados para auditoria
-- ✅ Relatórios periódicos são gerados via `monitor.sh` (orquestrador)
+- ✅ Relatórios periódicos são gerados via orquestrador
 - ✅ O administrador pode verificar sessões ativas a qualquer momento
 
 **O que NÃO fazemos:**
