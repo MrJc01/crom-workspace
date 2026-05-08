@@ -13,6 +13,7 @@ cmd_podman() {
         rm)     cmd_podman_rm "$@" ;;
         list|ls) cmd_podman_list ;;
         logs)   cmd_podman_logs "$@" ;;
+        compose) cmd_podman_compose "$@" ;;
         help|-h) cmd_podman_help ;;
         *)      err "Subcomando podman desconhecido: $sub"; cmd_podman_help ;;
     esac
@@ -171,6 +172,80 @@ EOF
     log_action "PODMAN_RUN" "name=${name} image=${image} port=${port} envs=${#envs[@]} vols=${#volumes[@]}"
 }
 
+cmd_podman_compose() {
+    local name="${1:-}"
+    
+    [[ -z "$name" ]] && { read -rp "  Nome do serviço compose: " name; }
+    [[ -z "$name" ]] && { err "Nome obrigatório"; return 1; }
+    name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')
+
+    if [[ ! -f "docker-compose.yml" ]] && [[ ! -f "docker-compose.yaml" ]] && [[ ! -f "compose.yml" ]] && [[ ! -f "compose.yaml" ]]; then
+        err "Nenhum arquivo docker-compose.yml encontrado no diretório atual."
+        return 1
+    fi
+
+    local compose_file=""
+    for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+        if [[ -f "$f" ]]; then
+            compose_file="$f"
+            break
+        fi
+    done
+
+    local workdir="$PWD"
+    local systemd_dir="${HOME}/.config/systemd/user"
+    local service_file="${systemd_dir}/${name}.service"
+
+    mkdir -p "$systemd_dir"
+
+    if [[ -f "$service_file" ]]; then
+        warn "Serviço '${name}' já existe. Use 'crom-ws podman rm ${name}' primeiro."
+        return 1
+    fi
+
+    info "Gerando serviço Systemd para Compose '${name}'..."
+
+    local pc_path=$(which podman-compose 2>/dev/null || echo "/usr/bin/podman-compose")
+
+    cat > "$service_file" <<EOF
+[Unit]
+Description=CROM Compose: ${name}
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=${workdir}
+ExecStart=${pc_path} -f ${compose_file} up
+ExecStop=${pc_path} -f ${compose_file} down
+Restart=always
+RestartSec=10
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target
+EOF
+
+    info "Recarregando systemd do usuário..."
+    systemctl --user daemon-reload
+
+    info "Habilitando e iniciando o serviço..."
+    systemctl --user enable --now "${name}.service" 2>/dev/null
+
+    # Verificar se subiu
+    sleep 2
+    if systemctl --user is-active --quiet "${name}.service" 2>/dev/null; then
+        success "Compose '${name}' está rodando!"
+        success "Diretório: ${workdir}"
+        success "Auto-restart: ATIVO (sobrevive reboot)"
+        echo -e "\n  ${C_D}Dica: Para parar, use: crom-ws podman stop ${name}${NC}\n"
+    else
+        warn "Serviço criado, mas pode ter falhado. Verifique com: crom-ws podman logs ${name}"
+    fi
+
+    log_action "PODMAN_COMPOSE" "name=${name} dir=${workdir}"
+}
+
 cmd_podman_stop() {
     local name="${1:-}"
     [[ -z "$name" ]] && { read -rp "  Nome do serviço: " name; }
@@ -213,8 +288,9 @@ cmd_podman_rm() {
     [[ -z "$name" ]] && return
 
     local quadlet_file="${QUADLET_DIR}/${name}.container"
-    if [[ ! -f "$quadlet_file" ]]; then
-        err "Quadlet '${name}' não encontrado."
+    local compose_file="${HOME}/.config/systemd/user/${name}.service"
+    if [[ ! -f "$quadlet_file" ]] && [[ ! -f "$compose_file" ]]; then
+        err "Serviço '${name}' não encontrado."
         return 1
     fi
 
@@ -222,39 +298,71 @@ cmd_podman_rm() {
     systemctl --user stop "${name}.service" 2>/dev/null || true
     systemctl --user disable "${name}.service" 2>/dev/null || true
 
-    # Remover arquivo Quadlet
-    rm -f "$quadlet_file"
+    # Remover arquivo
+    rm -f "$quadlet_file" "$compose_file"
     systemctl --user daemon-reload
 
     success "Container '${name}' removido do sistema."
-    info "Os dados do volume em ~/.local/share/crom-volumes/${name}/ foram preservados."
+    info "Os dados e volumes permanecem no disco."
     log_action "PODMAN_RM" "name=${name}"
 }
 
 cmd_podman_list() {
-    echo -e "\n  ${C_P}${C_B}🐳 CONTAINERS GERENCIADOS (Quadlets)${NC}\n"
+    echo -e "\n  ${C_P}${C_B}🐳 CONTAINERS GERENCIADOS (Quadlets / Compose)${NC}\n"
 
-    if [[ ! -d "$QUADLET_DIR" ]] || [[ -z "$(ls -A "$QUADLET_DIR"/*.container 2>/dev/null)" ]]; then
+    local found=0
+    if [[ -d "$QUADLET_DIR" ]] && [[ -n "$(ls -A "$QUADLET_DIR"/*.container 2>/dev/null)" ]]; then
+        found=1
+    fi
+    if [[ -d "${HOME}/.config/systemd/user" ]] && grep -q "CROM Compose:" "${HOME}/.config/systemd/user"/*.service 2>/dev/null; then
+        found=1
+    fi
+
+    if [[ $found -eq 0 ]]; then
         info "Nenhum container gerenciado."
-        info "Use: crom-ws podman run <nome> <imagem> <porta>"
+        info "Use: crom-ws podman run <nome> <imagem> [porta]"
+        info "Ou: crom-ws podman compose <nome>"
         echo
         return
     fi
 
-    printf "  ${C_B}%-16s %-25s %-8s %-12s${NC}\n" "SERVIÇO" "IMAGEM" "PORTA" "STATUS"
-    for qf in "$QUADLET_DIR"/*.container; do
-        local sname=$(basename "$qf" .container)
-        local img=$(grep '^Image=' "$qf" | cut -d= -f2)
-        local port=$(grep '^PublishPort=' "$qf" | head -1 | cut -d= -f2 | cut -d: -f1)
-        local st
-        if systemctl --user is-active --quiet "${sname}.service" 2>/dev/null; then
-            st="${C_G}● ATIVO${NC}"
-        else
-            st="${C_R}○ PARADO${NC}"
-        fi
-        printf "  %-16s %-25s %-8s " "$sname" "${img:0:23}" "$port"
-        echo -e "$st"
-    done
+    printf "  ${C_B}%-16s %-25s %-8s %-12s${NC}\n" "SERVIÇO" "TIPO/IMAGEM" "PORTA" "STATUS"
+    
+    # Quadlets
+    if [[ -d "$QUADLET_DIR" ]]; then
+        for qf in "$QUADLET_DIR"/*.container; do
+            [[ -f "$qf" ]] || continue
+            local sname=$(basename "$qf" .container)
+            local img=$(grep '^Image=' "$qf" | cut -d= -f2)
+            local port=$(grep '^PublishPort=' "$qf" | head -1 | cut -d= -f2 | cut -d: -f1)
+            local st
+            if systemctl --user is-active --quiet "${sname}.service" 2>/dev/null; then
+                st="${C_G}● ATIVO${NC}"
+            else
+                st="${C_R}○ PARADO${NC}"
+            fi
+            printf "  %-16s %-25s %-8s " "$sname" "${img:0:23}" "${port:--}"
+            echo -e "$st"
+        done
+    fi
+
+    # Composes
+    if [[ -d "${HOME}/.config/systemd/user" ]]; then
+        for cf in "${HOME}/.config/systemd/user"/*.service; do
+            [[ -f "$cf" ]] || continue
+            if grep -q "CROM Compose:" "$cf"; then
+                local sname=$(basename "$cf" .service)
+                local st
+                if systemctl --user is-active --quiet "${sname}.service" 2>/dev/null; then
+                    st="${C_G}● ATIVO${NC}"
+                else
+                    st="${C_R}○ PARADO${NC}"
+                fi
+                printf "  %-16s %-25s %-8s " "$sname" "docker-compose" "-"
+                echo -e "$st"
+            fi
+        done
+    fi
     echo
     log_action "PODMAN_LIST" ""
 }
@@ -278,7 +386,8 @@ cmd_podman_logs() {
 cmd_podman_help() {
     echo -e "\n  ${C_P}${C_B}🐳 CROM Podman — Containers com Auto-Restart${NC}\n"
     echo -e "  ${C_B}Uso básico:${NC}"
-    echo -e "  ${C_C}crom-ws podman run${NC} <nome> <imagem> [porta]         Criar container simples\n"
+    echo -e "  ${C_C}crom-ws podman run${NC} <nome> <imagem> [porta]         Criar container simples"
+    echo -e "  ${C_C}crom-ws podman compose${NC} <nome>                      Criar serviço via docker-compose.yml\n"
     echo -e "  ${C_B}Uso avançado (flags no estilo Docker):${NC}"
     echo -e "  ${C_C}-e${NC} KEY=VALUE          Variável de ambiente (pode repetir)"
     echo -e "  ${C_C}-v${NC} /host:/container   Volume customizado (pode repetir)"
