@@ -83,12 +83,26 @@ Outros membros **não têm acesso** ao seu diretório. O isolamento é garantido
 Todo membro tem acesso ao `crom-ws` — a CLI oficial para gerenciar projetos:
 
 ```bash
+# Projetos
 crom-ws init meu-projeto        # Criar projeto
 crom-ws list                    # Listar projetos
 crom-ws info meu-projeto        # Ver detalhes
+crom-ws delete meu-projeto      # Deletar projeto
+
+# Publicação Web (HTTPS automático)
 crom-ws publish meu-projeto 8080  # Publicar na web
-crom-ws unpublish meu-projeto   # Remover da web
-crom-ws ports                   # Ver portas em uso
+crom-ws unpublish meu-projeto     # Remover da web
+crom-ws ports                     # Ver portas em uso
+
+# Containers (Podman com auto-restart)
+crom-ws podman run meu-app redis:alpine 6379  # Criar container
+crom-ws podman list                            # Listar containers
+crom-ws podman stop meu-app                    # Parar
+crom-ws podman start meu-app                   # Iniciar
+crom-ws podman rm meu-app                      # Remover
+crom-ws podman logs meu-app                    # Ver logs
+
+# Sistema
 crom-ws status                  # Status do workspace
 crom-ws help                    # Todos os comandos
 ```
@@ -97,15 +111,19 @@ crom-ws help                    # Todos os comandos
 
 ---
 
-## 🐳 Docker / Podman
+## 🐳 Containers (Podman)
 
-Usamos **Podman** (Docker rootless — não precisa de root):
+Usamos **Podman** (Docker rootless — não precisa de root). A forma recomendada de rodar containers é pelo `crom-ws podman`, que garante **auto-restart no boot**:
 
 ```bash
-podman run -d -p 3000:80 nginx
-# ou o alias:
-docker run -d -p 3000:80 nginx
+# Criar container com auto-restart nativo
+crom-ws podman run meu-redis redis:alpine 6379
+
+# Depois, publicar na web se necessário
+crom-ws publish meu-redis 6379
 ```
+
+> ⚠️ **Importante:** Se você usar `podman run` diretamente (sem o `crom-ws podman`), o container **não** sobrevive a reboots da VPS. Use sempre `crom-ws podman run` para containers que precisam ficar no ar permanentemente.
 
 ---
 

@@ -1,152 +1,109 @@
-# 🛠️ CROM Workspace
+# 🛠️ CROM Workspace (crom-ws)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
-[![Shell](https://img.shields.io/badge/shell-bash-green.svg)]()
+> CLI oficial para membros do ecossistema CROM gerenciarem projetos, containers e publicação web nas VPS da comunidade.
 
-> **Sistema de workspace isolado para comunidades.** Gerencie membros, projetos e auditoria em servidores compartilhados com segurança e transparência.
+**Versão:** 1.1.0
 
 ---
 
 ## O que é
 
-O CROM Workspace é um conjunto de ferramentas de linha de comando projetado para **comunidades que compartilham servidores**. Ele fornece:
+O `crom-ws` é uma ferramenta de linha de comando instalada em todas as VPS do [Coletivo CROM](https://crom.run). Ele permite que cada membro:
 
-- **`crom-ws`** — CLI para membros criarem e gerenciarem projetos pessoais
-- **`crom-monitor`** — Painel administrativo para monitorar atividade dos membros
-- **Sistema de auditoria** — Registro automático de todos os comandos e sessões
+- 📁 **Crie e organize projetos** com estrutura padronizada
+- 🌐 **Publique na web** com subdomínio e HTTPS automático (Let's Encrypt)
+- 🐳 **Rode containers Podman** com auto-restart nativo via Quadlets
+- 📊 **Monitore** uso de disco, portas e histórico de ações
 
-Cada membro tem seu espaço isolado, com projetos organizados e publicação web integrada.
+## Infraestrutura
 
----
+| VPS | Domínio | Propósito |
+|-----|---------|-----------|
+| Guardiões | `crom.me` | VPS principal — serviços core |
+| Pilares | `vps1.crom.me` | Membros classificados como Pilar |
+| Forja | `vps2.crom.me` | Membros classificados como Forja |
 
-## Instalação
+## Comandos
 
-> Executar como **root** no servidor.
-
+### Projetos
 ```bash
-git clone https://github.com/MrJc01/crom-workspace.git
-cd crom-workspace
-sudo bash install.sh
+crom-ws init meu-projeto        # Criar projeto
+crom-ws list                    # Listar projetos
+crom-ws info meu-projeto        # Ver detalhes
+crom-ws delete meu-projeto      # Deletar projeto
 ```
 
-O instalador configura:
-1. `crom-ws` disponível globalmente para todos os membros
-2. `crom-monitor` para administradores
-3. Logging de comandos bash (auditoria)
-4. Gravação de sessões de terminal
-5. Process accounting (`acct`)
-
----
-
-## Uso — Membro
-
-Após login via SSH, qualquer membro pode usar:
-
+### Publicação Web
 ```bash
-crom-ws help                    # Ver todos os comandos
+crom-ws publish meu-projeto 8080  # Publicar com HTTPS automático
+crom-ws unpublish meu-projeto     # Remover da web
+crom-ws ports                     # Ver portas em uso no servidor
 ```
 
-### Comandos
-
-| Comando | Descrição |
-|---------|-----------|
-| `crom-ws init [nome]` | Criar projeto com estrutura padronizada |
-| `crom-ws list` | Listar todos os seus projetos |
-| `crom-ws info [projeto]` | Ver detalhes de um projeto / workspace |
-| `crom-ws delete [nome]` | Deletar projeto (pede confirmação) |
-| `crom-ws publish [nome] [porta]` | Publicar projeto na web via subdomínio |
-| `crom-ws unpublish [nome]` | Remover publicação |
-| `crom-ws ports` | Ver portas em uso no servidor |
-| `crom-ws status` | Status geral do workspace |
-| `crom-ws history [n]` | Últimas ações executadas |
-
-### Exemplo
-
+### Containers (Podman)
 ```bash
-$ crom-ws init api-rest
-  Descrição: API REST do meu projeto
-  Stack (go/python/web): go
-  ✓ Projeto 'api-rest' criado em ~/projetos/api-rest
-
-$ crom-ws list
-  📁 MEUS PROJETOS
-
-  PROJETO            STACK      DESCRIÇÃO                      CRIADO
-  api-rest           go         API REST do meu projeto        2026-05-06
-
-$ crom-ws publish api-rest 8080
-  ✓ Projeto publicado com sucesso!
-  ✓ URL: http://api-rest-user.example.com
+crom-ws podman run meu-redis redis:alpine 6379  # Criar com auto-restart
+crom-ws podman list                              # Listar containers
+crom-ws podman stop meu-redis                    # Parar
+crom-ws podman start meu-redis                   # Iniciar
+crom-ws podman rm meu-redis                      # Remover
+crom-ws podman logs meu-redis                    # Ver logs
 ```
 
----
-
-## Uso — Administrador
-
+### Sistema
 ```bash
-crom-monitor                    # Menu interativo
+crom-ws status                  # Status do workspace
+crom-ws history                 # Histórico de ações
+crom-ws help                    # Ajuda completa
 ```
 
-### Funcionalidades
-
-| Recurso | Descrição |
-|---------|-----------|
-| Atividade recente | Logs de todos os membros consolidados |
-| Monitor ao vivo | `tail -f` em tempo real de todos os logs |
-| Comandos bash | Ver cada comando digitado por um membro |
-| Gravações | Replay de sessões completas de terminal |
-| Projetos | Ver todos os projetos de todos os membros |
-| Relatório | Resumo de membros, projetos, uso de disco |
-
----
-
-## Estrutura de Projetos
-
-Cada projeto criado segue esta estrutura:
+## Arquitetura
 
 ```
-~/projetos/meu-projeto/
-├── src/               # Código fonte
-├── docs/              # Documentação
-├── scripts/           # Scripts auxiliares
-├── README.md          # Descrição do projeto
-└── .crom-project      # Metadados (owner, stack, data)
+cli/
+├── crom-ws                  # Entry point principal
+├── crom-publish-helper      # Helper de proxy Nginx (executado como root)
+└── modules/
+    ├── projects.sh          # init, list, info, delete
+    ├── publish.sh           # publish, unpublish, ports
+    └── podman.sh            # podman run/stop/start/rm/list/logs
+
+docs/
+├── documentacao.md          # Documentação completa
+├── guia-membros.md          # Guia de onboarding
+└── politica-acesso.md       # Política de uso
+
+monitor/
+└── crom-monitor.sh          # Painel admin (somente root)
+
+install.sh                   # Instalador completo
 ```
 
----
+## Como funciona o auto-restart (Podman Quadlets)
 
-## Auditoria
+Quando você executa `crom-ws podman run`, o sistema:
 
-O sistema registra **3 camadas** de atividade:
+1. Cria um arquivo **Quadlet** em `~/.config/containers/systemd/`
+2. Roda `systemctl --user daemon-reload`
+3. Habilita e inicia o serviço com `systemctl --user enable --now`
 
-| Camada | O que captura | Localização |
-|--------|---------------|-------------|
-| **Comandos bash** | Cada comando digitado | `/var/log/crom-membros/bash/` |
-| **Sessões** | Terminal inteiro gravado | `/var/log/crom-membros/sessions/` |
-| **Ações crom-ws** | Criação/deleção de projetos | `/var/log/crom-membros/<user>.log` |
+O **Linger** do systemd garante que os serviços do usuário continuam rodando mesmo após logout e sobrevivem a reboots da VPS.
 
-Administradores acessam tudo via `crom-monitor`.
+## Documentação
 
----
+- 📘 [Documentação Completa](docs/documentacao.md)
+- 📖 [Guia do Membro](docs/guia-membros.md)
+- 🛡️ [Política de Acesso](docs/politica-acesso.md)
 
-## Adaptando para Sua Comunidade
+## Ecossistema CROM
 
-O CROM Workspace é genérico. Para usar na sua comunidade:
-
-1. Clone este repo no servidor
-2. Rode `install.sh` como root
-3. Crie membros com `useradd` e adicione ao grupo `crom-membros`
-4. Cada membro faz SSH e usa `crom-ws`
-
-O sistema funciona com qualquer domínio e pode ser integrado com Nginx para publicação de projetos.
-
----
+| Recurso | URL |
+|---------|-----|
+| Portal | [crom.run](https://crom.run) |
+| GitHub | [github.com/MrJc01](https://github.com/MrJc01) |
+| Discord | [discord.gg/4b5wqdxreZ](https://discord.gg/4b5wqdxreZ) |
+| Wiki | [crom-wiki](https://github.com/MrJc01/crom-wiki) |
 
 ## Licença
 
-[MIT](LICENSE) — Use, modifique e distribua livremente.
-
----
-
-> Desenvolvido pelo [Coletivo CROM](https://crom.run) 🛡️
+MIT — Coletivo CROM

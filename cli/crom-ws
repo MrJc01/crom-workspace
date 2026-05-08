@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# CROM Workspace — Ferramenta de projetos para membros
+# ═══════════════════════════════════════════════════════════════
+# CROM Workspace v1.1.0 — Ferramenta de projetos para membros
 # Cada comando é logado para auditoria do admin (root)
+# ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 USER_NAME="$(whoami)"
 PROJECTS_DIR="$HOME/projetos"
 CROM_REG="$HOME/.crom"
 CROM_HIST="$CROM_REG/history.log"
 CENTRAL_LOG="/var/log/crom-membros/${USER_NAME}.log"
 CENTRAL_REG="/var/log/crom-membros/registry/${USER_NAME}"
+QUADLET_DIR="${HOME}/.config/containers/systemd"
 
+# ─── Cores ────────────────────────────────────────────────────
 C_R='\033[0;31m'; C_G='\033[0;32m'; C_Y='\033[1;33m'
 C_C='\033[0;36m'; C_P='\033[0;35m'; C_B='\033[1m'
 C_D='\033[2m'; NC='\033[0m'
 
+# ─── Funções base ─────────────────────────────────────────────
 log_action() {
     local ts=$(date '+%Y-%m-%d %H:%M:%S')
     local e="[${ts}] USER=${USER_NAME} ACTION=$1 DETAILS=\"${2:-}\""
@@ -36,162 +41,26 @@ success() { echo -e "  ${C_G}✓${NC}  $*"; }
 warn()    { echo -e "  ${C_Y}⚠${NC}  $*"; }
 err()     { echo -e "  ${C_R}✗${NC}  $*"; }
 
-cmd_init() {
-    local name="${1:-}"
-    [[ -z "$name" ]] && { read -rp "  Nome do projeto: " name; }
-    [[ -z "$name" ]] && { err "Nome obrigatório"; return 1; }
-    name=$(echo "$name" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')
-    local pdir="${PROJECTS_DIR}/${name}"
-    [[ -d "$pdir" ]] && { err "'${name}' já existe!"; return 1; }
-    read -rp "  Descrição: " desc; desc="${desc:-Sem descrição}"
-    read -rp "  Stack (go/python/web): " stack; stack="${stack:-geral}"
-    mkdir -p "${pdir}/src" "${pdir}/docs" "${pdir}/scripts"
-    cat > "${pdir}/.crom-project" <<EOF
-name=${name}
-owner=${USER_NAME}
-description=${desc}
-stack=${stack}
-created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-status=ativo
-EOF
-    echo "# ${name}" > "${pdir}/README.md"
-    echo "" >> "${pdir}/README.md"
-    echo "> ${desc}" >> "${pdir}/README.md"
-    echo "${name}|${desc}|${stack}|$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${CENTRAL_REG}/projects.list" 2>/dev/null || true
-    log_action "CREATE_PROJECT" "name=${name} stack=${stack}"
-    success "Projeto '${name}' criado em ${pdir}"
-}
+# ─── Carregar módulos ─────────────────────────────────────────
+# Os módulos ficam em /usr/local/lib/crom-ws/modules/ (no servidor)
+# ou na pasta cli/modules/ (desenvolvimento local)
+MODULES_DIR="/usr/local/lib/crom-ws/modules"
+if [[ ! -d "$MODULES_DIR" ]]; then
+    # Fallback para desenvolvimento local
+    MODULES_DIR="$(dirname "$(readlink -f "$0")")/modules"
+fi
 
-cmd_list() {
-    echo -e "\n  ${C_P}${C_B}📁 MEUS PROJETOS${NC}\n"
-    if [[ ! -d "$PROJECTS_DIR" ]] || [[ -z "$(ls -A "$PROJECTS_DIR" 2>/dev/null)" ]]; then
-        warn "Nenhum projeto. Use: crom-ws init <nome>"; return; fi
-    printf "  ${C_B}%-18s %-10s %-30s %-12s${NC}\n" "PROJETO" "STACK" "DESCRIÇÃO" "CRIADO"
-    for dir in "$PROJECTS_DIR"/*/; do
-        [[ ! -d "$dir" ]] && continue
-        local m="${dir}.crom-project" n s d c
-        if [[ -f "$m" ]]; then
-            n=$(grep '^name=' "$m" | cut -d= -f2)
-            s=$(grep '^stack=' "$m" | cut -d= -f2)
-            d=$(grep '^description=' "$m" | cut -d= -f2)
-            c=$(grep '^created=' "$m" | cut -d= -f2 | cut -dT -f1)
-        else n=$(basename "$dir"); s="-"; d="-"; c="-"; fi
-        printf "  %-18s %-10s %-30s %-12s\n" "$n" "$s" "${d:0:28}" "$c"
-    done
-    echo; log_action "LIST_PROJECTS" ""
-}
+if [[ -d "$MODULES_DIR" ]]; then
+    source "${MODULES_DIR}/projects.sh"
+    source "${MODULES_DIR}/publish.sh"
+    source "${MODULES_DIR}/podman.sh"
+fi
 
-cmd_info() {
-    local name="${1:-}"
-    if [[ -z "$name" ]]; then
-        echo -e "\n  ${C_P}${C_B}ℹ️  WORKSPACE${NC}\n"
-        echo -e "  User:     ${USER_NAME}"
-        echo -e "  Home:     ${HOME}"
-        echo -e "  Projetos: $(find "$PROJECTS_DIR" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)"
-        echo -e "  Disco:    $(du -sh "$HOME" 2>/dev/null | awk '{print $1}')"
-        echo -e "  Versão:   ${VERSION}"; echo; return; fi
-    local pdir="${PROJECTS_DIR}/${name}"
-    [[ ! -d "$pdir" ]] && { err "'${name}' não encontrado"; return 1; }
-    echo -e "\n  ${C_P}${C_B}📋 ${name}${NC}\n"
-    [[ -f "${pdir}/.crom-project" ]] && sed 's/^/  /' "${pdir}/.crom-project"
-    echo -e "  disco=$(du -sh "$pdir" 2>/dev/null | awk '{print $1}')"
-    echo -e "  arquivos=$(find "$pdir" -type f | wc -l)"; echo
-    log_action "VIEW_PROJECT" "name=${name}"
-}
-
-cmd_delete() {
-    local name="${1:-}"
-    [[ -z "$name" ]] && { read -rp "  Projeto para deletar: " name; }
-    [[ -z "$name" ]] && return
-    local pdir="${PROJECTS_DIR}/${name}"
-    [[ ! -d "$pdir" ]] && { err "'${name}' não encontrado"; return 1; }
-    read -rp "  Digite '${name}' para confirmar: " conf
-    [[ "$conf" != "$name" ]] && { info "Cancelado"; return; }
-    rm -rf "$pdir"
-    log_action "DELETE_PROJECT" "name=${name}"
-    success "'${name}' deletado"
-}
-
+# ─── Comandos do sistema ──────────────────────────────────────
 cmd_history() {
     echo -e "\n  ${C_P}${C_B}📜 HISTÓRICO${NC}\n"
     [[ -f "$CROM_HIST" ]] && tail -n "${1:-20}" "$CROM_HIST" | sed 's/^/  /' || warn "Vazio"
     echo
-}
-
-cmd_publish() {
-    local name="${1:-}"
-    local port="${2:-}"
-    [[ -z "$name" ]] && { read -rp "  Nome do projeto: " name; }
-    [[ -z "$name" ]] && return
-    local pdir="${PROJECTS_DIR}/${name}"
-    [[ ! -d "$pdir" ]] && { err "'${name}' não encontrado. Crie primeiro com 'crom-ws init'"; return 1; }
-    [[ -z "$port" ]] && { read -rp "  Porta local (ex: 3000): " port; }
-    [[ -z "$port" ]] && return
-
-    info "Solicitando publicação para ${name} na porta ${port}..."
-    local res
-    if res=$(sudo /usr/local/sbin/crom-publish-helper add "$USER_NAME" "$name" "$port" 2>&1); then
-        if echo "$res" | grep -q "SUCESSO"; then
-            local url=$(echo "$res" | grep "SUCESSO" | cut -d: -f2)
-            success "Projeto publicado com sucesso!"
-            success "URL: http://${url}"
-            log_action "PUBLISH_PROJECT" "name=${name} port=${port} url=${url}"
-        else
-            err "Falha na publicação: $res"
-        fi
-    else
-        err "Erro crítico: $res"
-    fi
-}
-
-cmd_unpublish() {
-    local name="${1:-}"
-    [[ -z "$name" ]] && { read -rp "  Nome do projeto: " name; }
-    [[ -z "$name" ]] && return
-    
-    info "Removendo publicação de ${name}..."
-    local res
-    if res=$(sudo /usr/local/sbin/crom-publish-helper rm "$USER_NAME" "$name" 2>&1); then
-        if echo "$res" | grep -q "SUCESSO"; then
-            success "Projeto removido da web."
-            log_action "UNPUBLISH_PROJECT" "name=${name}"
-        else
-            err "Falha ao remover: $res"
-        fi
-    else
-        err "Erro crítico: $res"
-    fi
-}
-
-cmd_ports() {
-    echo -e "\n  ${C_P}${C_B}🌐 PROJETOS PUBLICADOS (ECOSSISTEMA)${NC}\n"
-    local list=$(sudo /usr/local/sbin/crom-publish-helper list 2>/dev/null)
-    if [[ -z "$list" ]]; then
-        info "Nenhum projeto publicado no servidor."
-        echo
-        return
-    fi
-    printf "  ${C_B}%-8s %-15s %-15s %-35s${NC}\n" "PORTA" "USUÁRIO" "PROJETO" "URL (DOMÍNIO)"
-    echo "$list" | while IFS=: read -r port user proj dom; do
-        printf "  %-8s %-15s %-15s %-35s\n" "$port" "$user" "$proj" "$dom"
-    done
-    echo
-    log_action "VIEW_PORTS" ""
-}
-
-cmd_help() {
-    echo -e "\n  ${C_P}${C_B}CROM Workspace v${VERSION}${NC}\n"
-    echo -e "  ${C_C}crom-ws init${NC} [nome]         Criar projeto"
-    echo -e "  ${C_C}crom-ws list${NC}                Listar projetos"
-    echo -e "  ${C_C}crom-ws info${NC} [projeto]      Detalhes do projeto"
-    echo -e "  ${C_C}crom-ws delete${NC} [nome]       Deletar projeto"
-    echo -e "  ${C_C}crom-ws publish${NC} [nome] [p]  Publicar projeto na web"
-    echo -e "  ${C_C}crom-ws unpublish${NC} [nome]    Remover publicação"
-    echo -e "  ${C_C}crom-ws ports${NC}               Ver portas em uso no servidor"
-    echo -e "  ${C_C}crom-ws status${NC}              Status geral"
-    echo -e "  ${C_C}crom-ws history${NC} [n]         Últimas ações"
-    echo -e "  ${C_C}crom-ws help${NC}                Esta ajuda\n"
-    echo -e "  ${C_D}Todos os comandos são registrados.${NC}\n"
 }
 
 cmd_status() {
@@ -207,6 +76,28 @@ cmd_status() {
     log_action "VIEW_STATUS" "projects=$t"
 }
 
+cmd_help() {
+    echo -e "\n  ${C_P}${C_B}CROM Workspace v${VERSION}${NC}\n"
+    echo -e "  ${C_B}Projetos:${NC}"
+    echo -e "  ${C_C}crom-ws init${NC} [nome]         Criar projeto"
+    echo -e "  ${C_C}crom-ws list${NC}                Listar projetos"
+    echo -e "  ${C_C}crom-ws info${NC} [projeto]      Detalhes do projeto"
+    echo -e "  ${C_C}crom-ws delete${NC} [nome]       Deletar projeto\n"
+    echo -e "  ${C_B}Publicação Web:${NC}"
+    echo -e "  ${C_C}crom-ws publish${NC} [nome] [p]  Publicar projeto na web"
+    echo -e "  ${C_C}crom-ws unpublish${NC} [nome]    Remover publicação"
+    echo -e "  ${C_C}crom-ws ports${NC}               Ver portas em uso no servidor\n"
+    echo -e "  ${C_B}Containers (Podman):${NC}"
+    echo -e "  ${C_C}crom-ws podman${NC} [sub]        Gerenciar containers (run/stop/rm/list/logs)"
+    echo -e "  ${C_C}crom-ws podman help${NC}         Ajuda detalhada dos containers\n"
+    echo -e "  ${C_B}Sistema:${NC}"
+    echo -e "  ${C_C}crom-ws status${NC}              Status geral"
+    echo -e "  ${C_C}crom-ws history${NC} [n]         Últimas ações"
+    echo -e "  ${C_C}crom-ws help${NC}                Esta ajuda\n"
+    echo -e "  ${C_D}Todos os comandos são registrados.${NC}\n"
+}
+
+# ─── Roteador ─────────────────────────────────────────────────
 ensure_dirs
 case "${1:-}" in
     init|new)       shift; cmd_init "$@" ;;
@@ -216,6 +107,7 @@ case "${1:-}" in
     publish|pub)    shift; cmd_publish "$@" ;;
     unpublish|unpub) shift; cmd_unpublish "$@" ;;
     ports)          cmd_ports ;;
+    podman|pod)     shift; cmd_podman "$@" ;;
     status|st)      cmd_status ;;
     history|log)    shift; cmd_history "$@" ;;
     version|-v)     echo "crom-ws v${VERSION}" ;;

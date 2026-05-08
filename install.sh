@@ -27,6 +27,11 @@ echo "[2/5] Instalando crom-ws em /usr/local/bin..."
 cp crom-ws /usr/local/bin/crom-ws
 chmod 755 /usr/local/bin/crom-ws
 
+echo "[2.1/5] Instalando módulos do crom-ws..."
+mkdir -p /usr/local/lib/crom-ws/modules
+cp modules/*.sh /usr/local/lib/crom-ws/modules/ 2>/dev/null || true
+chmod 644 /usr/local/lib/crom-ws/modules/*.sh 2>/dev/null || true
+
 echo "[2.5/5] Instalando crom-publish-helper em /usr/local/sbin..."
 cp crom-publish-helper /usr/local/sbin/crom-publish-helper
 chmod 700 /usr/local/sbin/crom-publish-helper
