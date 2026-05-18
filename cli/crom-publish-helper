@@ -67,8 +67,14 @@ if [[ "$ACTION" == "add" ]]; then
         exit 1
     fi
     
+    CUSTOM_DOMAIN="${5:-}"
+    if [[ -n "$CUSTOM_DOMAIN" ]]; then
+        URL="$CUSTOM_DOMAIN"
+    else
+        URL="${PROJECT}-${USER_NAME}.${HOST_DOMAIN}"
+    fi
+    
     # Gerar Nginx conf
-    URL="${PROJECT}-${USER_NAME}.${HOST_DOMAIN}"
     cat > "$CONF_FILE" <<EOF
 server {
     listen 80;

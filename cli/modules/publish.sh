@@ -5,6 +5,7 @@
 cmd_publish() {
     local name="${1:-}"
     local port="${2:-}"
+    local custom_domain="${3:-}"
     [[ -z "$name" ]] && { read -rp "  Nome do projeto: " name; }
     [[ -z "$name" ]] && return
     local pdir="${PROJECTS_DIR}/${name}"
@@ -14,7 +15,7 @@ cmd_publish() {
 
     info "Solicitando publicação para ${name} na porta ${port}..."
     local res
-    if res=$(sudo /usr/local/sbin/crom-publish-helper add "$USER_NAME" "$name" "$port" 2>&1); then
+    if res=$(sudo /usr/local/sbin/crom-publish-helper add "$USER_NAME" "$name" "$port" "$custom_domain" 2>&1); then
         if echo "$res" | grep -q "SUCESSO"; then
             local url=$(echo "$res" | grep "SUCESSO" | cut -d: -f2)
             success "Projeto publicado com sucesso!"

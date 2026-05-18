@@ -210,8 +210,6 @@ cmd_podman_compose() {
     cat > "$service_file" <<EOF
 [Unit]
 Description=CROM Compose: ${name}
-Requires=network-online.target
-After=network-online.target
 
 [Service]
 Type=exec
